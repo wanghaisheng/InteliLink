@@ -3,8 +3,11 @@ from loader import load_proxies, load_domains, load_csv_database, save_csv_datab
 from scraper import fetch_website, parse_website
 from logger_config import setup_logger
 from database import create_connection, create_table, insert_contact, fetch_all_contacts
+import asyncio
+from aiohttp import ClientSession, TCPConnector
+import aiohttp
 
-def main():
+async def main():
     setup_logger()
     logger = logging.getLogger(__name__)
 
@@ -48,20 +51,31 @@ def main():
 
     # Webseitenprüfung und Datenextraktion
     for domain in domains:
-        url = f"http://{domain}"
-        html = fetch_website(url, proxies)
-        if html:
-            contact_info = parse_website(html, url, proxies)
-            if contact_info:
-                # Überprüfen, ob die Daten bereits in der SQLite-Datenbank vorhanden sind
-                if not any(contact['Webseite'] == url for contact in contacts):
-                    contact_info['Webseite'] = url
-                    insert_contact(conn, contact_info)
-                    logger.info(f"Neue Kontaktdaten gefunden und hinzugefügt für {url}")
+        if domain and '.' in domain:
+            url=domain.strip()
+            if  'https' not in url:
+
+                url = f"https://{domain}"
+            elif 'http' not in url:
+                url = f"https://{domain}"
+
+
+            html = await fetch_website(url, proxies)
+            if html:
+                logger.info(f'grab html raw')
+                contact_info = await parse_website(html, url, proxies)
+                logger.info(f'grab contact_info raw:{contact_info}')
+
+                if contact_info:
+                    # Überprüfen, ob die Daten bereits in der SQLite-Datenbank vorhanden sind
+                    if not any(contact['Webseite'] == url for contact in contacts):
+                        contact_info['Webseite'] = url
+                        insert_contact(conn, contact_info)
+                        logger.info(f"Neue Kontaktdaten gefunden und hinzugefügt für {url}")
 
     # Verbindung schließen
     conn.close()
     logger.info("Programm beendet und Daten gespeichert")
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
